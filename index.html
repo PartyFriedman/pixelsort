@@ -62,7 +62,7 @@
                 <div class="angle-entry">
                   <div class="angle-number">
                     <label for="angle-number" class="sr-only">Vinkel i grader</label>
-                    <input type="number" id="angle-number" step="1" value="0" inputmode="numeric" />
+                    <input type="number" autocomplete="off" id="angle-number" step="1" value="0" inputmode="numeric" />
                     <span aria-hidden="true">°</span>
                   </div>
                   <span class="angle-word" id="angle-word" aria-hidden="true">mot høyre</span>
@@ -72,16 +72,16 @@
             <fieldset class="choice choice-key">
               <legend>Sorter etter</legend>
               <div class="segmented">
-                <label><input type="radio" name="key" value="brightness" checked /><span>Lysstyrke</span></label>
-                <label><input type="radio" name="key" value="hue" /><span>Nyanse</span></label>
-                <label><input type="radio" name="key" value="saturation" /><span>Metning</span></label>
+                <label><input type="radio" autocomplete="off" name="key" value="brightness" checked /><span>Lysstyrke</span></label>
+                <label><input type="radio" autocomplete="off" name="key" value="hue" /><span>Nyanse</span></label>
+                <label><input type="radio" autocomplete="off" name="key" value="saturation" /><span>Metning</span></label>
               </div>
             </fieldset>
             <fieldset class="choice choice-order">
               <legend>Rekkefølge</legend>
               <div class="segmented">
-                <label><input type="radio" name="order" value="asc" checked /><span>Stigende</span></label>
-                <label><input type="radio" name="order" value="desc" /><span>Synkende</span></label>
+                <label><input type="radio" autocomplete="off" name="order" value="asc" checked /><span>Stigende</span></label>
+                <label><input type="radio" autocomplete="off" name="order" value="desc" /><span>Synkende</span></label>
               </div>
             </fieldset>
             <!-- Stripebredde: så mange nabolinjer sorteres sammen, etter gjennomsnittet på tvers -->
@@ -90,7 +90,7 @@
                 <label for="stripe">Stripebredde</label>
                 <output id="stripe-value" for="stripe">1 px</output>
               </div>
-              <input type="range" id="stripe" min="1" max="50" step="1" value="1" aria-valuetext="1 piksel" />
+              <input type="range" autocomplete="off" id="stripe" min="1" max="50" step="1" value="1" aria-valuetext="1 piksel" />
             </div>
           </div>
         </section>
@@ -106,14 +106,14 @@
                 <label for="lower">Nedre grense</label>
                 <output id="lower-value" for="lower">0</output>
               </div>
-              <input type="range" id="lower" min="0" max="255" step="1" value="0" />
+              <input type="range" autocomplete="off" id="lower" min="0" max="255" step="1" value="0" />
             </div>
             <div class="field">
               <div class="field-head">
                 <label for="upper">Øvre grense</label>
                 <output id="upper-value" for="upper">255</output>
               </div>
-              <input type="range" id="upper" min="0" max="255" step="1" value="255" />
+              <input type="range" autocomplete="off" id="upper" min="0" max="255" step="1" value="255" />
             </div>
           </div>
         </section>
@@ -121,6 +121,7 @@
         <section class="panel-section panel-actions" aria-label="Handlinger">
           <button type="button" class="btn btn-primary" id="sort" disabled>Sorter</button>
           <button type="button" class="btn" id="reset" disabled>Tilbakestill</button>
+          <button type="button" class="btn" id="download" disabled>Last ned PNG</button>
         </section>
       </aside>
 

@@ -12,6 +12,7 @@ const info = document.getElementById("info");
 const pickTop = document.getElementById("pick-top");
 const sortBtn = document.getElementById("sort");
 const resetBtn = document.getElementById("reset");
+const downloadBtn = document.getElementById("download");
 const lowerInput = document.getElementById("lower");
 const upperInput = document.getElementById("upper");
 const lowerValue = document.getElementById("lower-value");
@@ -120,6 +121,7 @@ function loadFile(file) {
       original = null;
       sortBtn.disabled = true;
       resetBtn.disabled = true;
+      downloadBtn.disabled = true;
       showError(`Klarte ikke å lese pikslene i «${file.name}». Bildet kan være for stort.`);
       return;
     }
@@ -138,6 +140,7 @@ function loadFile(file) {
     sortBtn.disabled = false;
     resetBtn.disabled = false;
     isSorted = false;
+    downloadBtn.disabled = true; // ingenting sortert å laste ned ennå
     updateInfo("Original");
     sortBtn.focus(); // neste naturlige steg
   };
@@ -440,6 +443,7 @@ function showSorted() {
   leavePreview();
   ctx.putImageData(sorted, 0, 0);
   isSorted = true;
+  downloadBtn.disabled = false;
   const stripeText = o.stripe > 1 ? `, striper ${o.stripe} px` : "";
   updateInfo(
     `Sortert: ${o.angle}°, ${LABELS[o.key]}, ${LABELS[o.order]}${stripeText}, lysstyrke ${o.lower}–${o.upper}`
@@ -457,7 +461,48 @@ resetBtn.addEventListener("click", () => {
   leavePreview();
   ctx.putImageData(original, 0, 0);
   isSorted = false;
+  downloadBtn.disabled = true;
   updateInfo("Original");
+});
+
+// ---------- Last ned PNG ----------
+// Lagrer det sorterte bildet i full oppløsning. Vises forhåndsvisningen akkurat nå, sorteres hele
+// bildet ferdig først. Filnavnet er det opprinnelige navnet + «-sortert», f.eks. foto.jpg →
+// foto-sortert.png. Knappen er bare aktiv når et sortert bilde vises.
+function downloadName(name) {
+  const base = name.replace(/\.[^./\\]+$/, ""); // fjern filendelsen (.jpg, .png …)
+  return `${base || "bilde"}-sortert.png`;
+}
+
+let saving = false;
+
+downloadBtn.addEventListener("click", () => {
+  if (!original || !isSorted || saving) return;
+  if (previewShowing || pendingFrame || fullTimer) renderFull(); // aldri forhåndsvisningen
+
+  // Mens PNG-filen lages (kan ta et sekund på store bilder): vis det på knappen.
+  // aria-disabled i stedet for disabled, så tastaturfokuset blir stående på knappen.
+  saving = true;
+  downloadBtn.setAttribute("aria-disabled", "true");
+  downloadBtn.textContent = "Lagrer …";
+
+  canvas.toBlob((blob) => {
+    saving = false;
+    downloadBtn.removeAttribute("aria-disabled");
+    downloadBtn.textContent = "Last ned PNG";
+    if (!blob) {
+      showError("Klarte ikke å lage PNG-filen. Bildet kan være for stort for nettleseren.");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = downloadName(fileName);
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000); // gi nettleseren tid til å starte nedlastingen
+  }, "image/png");
 });
 
 // ---------- Forhåndsvisning mens man justerer ----------
@@ -688,3 +733,21 @@ function hideError() {
   errorBox.hidden = true;
   errorBox.textContent = "";
 }
+
+// ---------- Oppstart ----------
+// Sørg for at tallene ved gliderne og hjulet alltid stemmer med selve feltene når siden åpnes.
+// (Feltene har autocomplete="off", men hvis en nettleser likevel husker gamle verdier etter
+// en omlasting, skal det ikke se ut som glideren står ett sted og tallet sier noe annet.)
+function syncControls() {
+  lowerValue.textContent = lowerInput.value;
+  upperValue.textContent = upperInput.value;
+  const width = Number(stripeInput.value);
+  stripeValue.textContent = `${width} px`;
+  stripeInput.setAttribute("aria-valuetext", width === 1 ? "1 piksel" : `${width} piksler`);
+  angle = -1; // tving setAngle til å oppdatere hjulet, også når vinkelen er 0
+  setAngle(Number(angleNumber.value) || 0);
+}
+
+syncControls();
+// Når siden hentes fra nettleserens tilbake-/fram-minne, kan feltene ha blitt gjenopprettet
+window.addEventListener("pageshow", syncControls);

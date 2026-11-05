@@ -91,8 +91,10 @@ h1 {
   background: #a5c7e6;
 }
 
-/* Deaktiverte knapper: tydelig dempet, og ingen hover-effekt */
-.btn:disabled {
+/* Deaktiverte knapper: tydelig dempet, og ingen hover-effekt.
+   aria-disabled brukes mens en fil lagres, så knappen beholder tastaturfokus. */
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -605,14 +607,25 @@ canvas {
     grid-row: 3;
   }
 
+  /* Knappene legges rett i panelets rutenett: Sorter og Tilbakestill ved siden av
+     «Velg nytt bilde», og «Last ned PNG» i full bredde under */
   .panel-actions {
-    grid-column: 2 / -1;
+    display: contents;
+  }
+
+  #sort {
+    grid-column: 2;
     grid-row: 3;
-    flex-direction: row;
-    position: static;
-    margin: 0;
-    padding: 0;
-    background: none;
+  }
+
+  #reset {
+    grid-column: 3;
+    grid-row: 3;
+  }
+
+  #download {
+    grid-column: 1 / -1;
+    grid-row: 4;
   }
 
   .panel .btn {
@@ -620,7 +633,7 @@ canvas {
   }
 
   canvas {
-    max-height: calc(100dvh - 400px); /* toppen, panelet og marger */
+    max-height: calc(100dvh - 450px); /* toppen, panelet og marger */
   }
 }
 
