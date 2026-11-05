@@ -18,6 +18,21 @@
     </header>
 
     <main>
+      <!-- Terskler: bare piksler med lysstyrke mellom grensene blir sortert -->
+      <div class="controls" role="group" aria-labelledby="controls-title">
+        <p class="controls-title" id="controls-title">Lysstyrke som sorteres</p>
+        <div class="field">
+          <label for="lower">Nedre grense</label>
+          <input type="range" id="lower" min="0" max="255" step="1" value="0" />
+          <output id="lower-value" for="lower">0</output>
+        </div>
+        <div class="field">
+          <label for="upper">Øvre grense</label>
+          <input type="range" id="upper" min="0" max="255" step="1" value="255" />
+          <output id="upper-value" for="upper">255</output>
+        </div>
+      </div>
+
       <p class="error" id="error" role="alert" hidden></p>
 
       <!-- Slippsonen: kan klikkes, eller aktiveres med Enter/mellomrom -->

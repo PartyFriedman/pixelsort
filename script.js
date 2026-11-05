@@ -12,12 +12,17 @@ const info = document.getElementById("info");
 const pickTop = document.getElementById("pick-top");
 const sortBtn = document.getElementById("sort");
 const resetBtn = document.getElementById("reset");
+const lowerInput = document.getElementById("lower");
+const upperInput = document.getElementById("upper");
+const lowerValue = document.getElementById("lower-value");
+const upperValue = document.getElementById("upper-value");
 
 // ---------- Tilstand ----------
 // Originalbildet lagres her som en egen kopi av pikslene.
 // Den blir aldri endret – sorteringen jobber alltid på en ny kopi.
 let original = null;
 let fileName = "";
+let isSorted = false; // vises det sorterte bildet akkurat nå?
 
 // ---------- Statuslinjen øverst ----------
 function updateInfo(state) {
@@ -126,6 +131,7 @@ function loadFile(file) {
     pickTop.hidden = false;
     sortBtn.disabled = false;
     resetBtn.disabled = false;
+    isSorted = false;
     updateInfo("Original");
     sortBtn.focus(); // neste naturlige steg
   };
@@ -139,10 +145,13 @@ function loadFile(file) {
 }
 
 // ---------- Sortering ----------
-// Lysstyrke 0–255, vektet slik øyet oppfatter farger (grønt virker lysest, blått mørkest)
-function sortRowsByBrightness(src) {
+// Lysstyrke 0–255, vektet slik øyet oppfatter farger (grønt virker lysest, blått mørkest).
+// Bare piksler med lysstyrke mellom nedre og øvre grense blir sortert. I hver rad blir
+// hver sammenhengende gruppe («segment») av slike piksler sortert for seg, mørkest først.
+// Piksler utenfor grensene blir stående der de er, og deler raden opp i segmenter.
+function sortRowsByBrightness(src, lower, upper) {
   const { width: w, height: h } = src;
-  const out = new ImageData(w, h);
+  const out = new ImageData(new Uint8ClampedArray(src.data), w, h); // starter som en kopi
   const bytes = src.data;
   const srcPx = new Uint32Array(bytes.buffer); // én verdi per piksel (R, G, B og A samlet)
   const outPx = new Uint32Array(out.data.buffer);
@@ -151,43 +160,111 @@ function sortRowsByBrightness(src) {
 
   for (let y = 0; y < h; y++) {
     const row = y * w;
-    slots.fill(0);
 
-    // 1) Mål lysstyrken på hver piksel i raden, og tell hvor mange det er av hver
+    // 1) Mål lysstyrken på hver piksel i raden
     for (let x = 0; x < w; x++) {
       const i = (row + x) * 4;
-      const b = ((bytes[i] * 299 + bytes[i + 1] * 587 + bytes[i + 2] * 114 + 500) / 1000) | 0;
-      brightness[x] = b;
-      slots[b]++;
+      brightness[x] = ((bytes[i] * 299 + bytes[i + 1] * 587 + bytes[i + 2] * 114 + 500) / 1000) | 0;
     }
 
-    // 2) Regn ut hvor hver lysstyrke-gruppe skal begynne i raden
-    let pos = 0;
-    for (let b = 0; b < 256; b++) {
+    // 2) Finn segmentene og sorter hvert av dem
+    let x = 0;
+    while (x < w) {
+      if (brightness[x] < lower || brightness[x] > upper) {
+        x++; // utenfor grensene: blir stående
+        continue;
+      }
+      const start = x;
+      while (x < w && brightness[x] >= lower && brightness[x] <= upper) x++;
+      sortSegment(row, start, x);
+    }
+  }
+  return out;
+
+  // Sorterer pikslene fra start til (men ikke med) end i én rad.
+  // Like lyse piksler beholder rekkefølgen sin.
+  function sortSegment(row, start, end) {
+    const length = end - start;
+    if (length < 2) return;
+
+    if (length < 64) {
+      // Korte segmenter: plukk én og én piksel og skyv den inn på riktig plass
+      for (let i = start + 1; i < end; i++) {
+        const key = brightness[i];
+        const px = outPx[row + i];
+        let j = i - 1;
+        while (j >= start && brightness[j] > key) {
+          brightness[j + 1] = brightness[j];
+          outPx[row + j + 1] = outPx[row + j];
+          j--;
+        }
+        brightness[j + 1] = key;
+        outPx[row + j + 1] = px;
+      }
+      return;
+    }
+
+    // Lange segmenter: tell hvor mange det er av hver lysstyrke, og legg dem ut i bunker
+    for (let b = lower; b <= upper; b++) slots[b] = 0;
+    for (let i = start; i < end; i++) slots[brightness[i]]++;
+    let pos = start;
+    for (let b = lower; b <= upper; b++) {
       const count = slots[b];
       slots[b] = pos;
       pos += count;
     }
-
-    // 3) Plasser pikslene, mørkeste først. Like lyse beholder rekkefølgen sin.
-    for (let x = 0; x < w; x++) {
-      outPx[row + slots[brightness[x]]++] = srcPx[row + x];
+    for (let i = start; i < end; i++) {
+      outPx[row + slots[brightness[i]]++] = srcPx[row + i];
     }
   }
-  return out;
 }
 
-sortBtn.addEventListener("click", () => {
+function showSorted() {
   if (!original) return;
-  ctx.putImageData(sortRowsByBrightness(original), 0, 0);
-  updateInfo("Sortert");
-});
+  const lower = Number(lowerInput.value);
+  const upper = Number(upperInput.value);
+  ctx.putImageData(sortRowsByBrightness(original, lower, upper), 0, 0);
+  isSorted = true;
+  updateInfo(`Sortert (${lower}–${upper})`);
+}
+
+sortBtn.addEventListener("click", showSorted);
 
 resetBtn.addEventListener("click", () => {
   if (!original) return;
   ctx.putImageData(original, 0, 0);
+  isSorted = false;
   updateInfo("Original");
 });
+
+// ---------- Terskler (gliderne) ----------
+// Nedre grense kan aldri gå forbi øvre, og omvendt: gliderne stopper når de møtes.
+// Gliderne er vanlige range-felt, så piltaster, Page Up/Down og Home/End virker av seg selv.
+let pendingSort = 0;
+
+function onThresholdInput(event) {
+  let lower = Number(lowerInput.value);
+  let upper = Number(upperInput.value);
+  if (lower > upper) {
+    if (event.target === lowerInput) lower = upper;
+    else upper = lower;
+    lowerInput.value = lower;
+    upperInput.value = upper;
+  }
+  lowerValue.textContent = lower;
+  upperValue.textContent = upper;
+
+  // Vises det sorterte bildet, oppdateres det mens man drar (maks én gang per skjermbilde)
+  if (isSorted && !pendingSort) {
+    pendingSort = requestAnimationFrame(() => {
+      pendingSort = 0;
+      showSorted();
+    });
+  }
+}
+
+lowerInput.addEventListener("input", onThresholdInput);
+upperInput.addEventListener("input", onThresholdInput);
 
 // ---------- Feilmeldinger ----------
 function showError(message) {

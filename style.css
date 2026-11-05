@@ -192,6 +192,50 @@ kbd {
   font-size: 0.8rem;
 }
 
+/* ---------- Terskler (gliderne) ---------- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+}
+
+.controls-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field {
+  flex: 1 1 260px;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field label {
+  flex: none;
+  min-width: 7.5em;
+  font-size: 0.9rem;
+}
+
+.field input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field output {
+  flex: none;
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* Elementer med hidden-attributtet skal alltid være skjult,
    selv om en annen regel gir dem display: block eller flex */
 [hidden] {
@@ -202,7 +246,7 @@ kbd {
 canvas {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 140px); /* plass til toppen og marger */
+  max-height: calc(100vh - 200px); /* plass til toppen, gliderne og marger */
   width: auto;
   height: auto;
   object-fit: contain;
