@@ -84,6 +84,14 @@
                 <label><input type="radio" name="order" value="desc" /><span>Synkende</span></label>
               </div>
             </fieldset>
+            <!-- Stripebredde: så mange nabolinjer sorteres sammen, etter gjennomsnittet på tvers -->
+            <div class="field choice-stripe">
+              <div class="field-head">
+                <label for="stripe">Stripebredde</label>
+                <output id="stripe-value" for="stripe">1 px</output>
+              </div>
+              <input type="range" id="stripe" min="1" max="50" step="1" value="1" aria-valuetext="1 piksel" />
+            </div>
           </div>
         </section>
 

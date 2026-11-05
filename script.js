@@ -192,7 +192,13 @@ function getLines(w, h, angle) {
     }
   }
 
-  linesCache = { w, h, angle, order, lineStarts, lineCount, maxLength };
+  // Posisjon langs vinkelen, avrundet. Brukes til å finne pikslene som ligger «side om side»
+  // på tvers av nabolinjer når stripene er bredere enn 1 piksel.
+  const along = [0, (w - 1) * cos, (h - 1) * sin, (w - 1) * cos + (h - 1) * sin].map(Math.round);
+  const alongFirst = Math.min(...along);
+  const alongCount = Math.max(...along) - alongFirst + 1;
+
+  linesCache = { w, h, angle, order, lineStarts, lineCount, maxLength, cos, sin, alongFirst, alongCount };
   return linesCache;
 }
 
@@ -201,16 +207,25 @@ function getLines(w, h, angle) {
 // Hver sammenhengende gruppe («segment») av slike piksler sorteres for seg, etter
 // lysstyrke, nyanse eller metning. Piksler utenfor grensene blir stående der de er.
 //
-// options = { lower, upper, angle: 0–359, key: "brightness"|"hue"|"saturation", order: "asc"|"desc" }
+// Stripebredde: så mange nabolinjer danner ett «bånd». For hver posisjon langs båndet regnes
+// gjennomsnittsfargen av pikslene på tvers, og sorteringen bruker dette gjennomsnittet, så alle
+// linjene i båndet sorteres likt og stripen holder seg samlet. Pikslene beholder sin egen farge –
+// gjennomsnittet bestemmer bare hvor de havner. Grensene bruker fortsatt hver piksels egen
+// lysstyrke; ellers ville mørke kantpiksler blitt dratt med inn i lyse områder som prikker.
+//
+// options = { lower, upper, angle: 0–359, key: "brightness"|"hue"|"saturation",
+//             order: "asc"|"desc", stripe: 1–50 }
 function sortPixels(src, options) {
-  const { lower, upper, angle, key, order: sortOrder } = options;
+  const { lower, upper, angle, key, order: sortOrder, stripe = 1 } = options;
   const { width: w, height: h } = src;
   const out = new ImageData(new Uint8ClampedArray(src.data), w, h); // starter som en kopi
   const bytes = src.data;
   const srcPx = new Uint32Array(bytes.buffer); // én verdi per piksel (R, G, B og A samlet)
   const outPx = new Uint32Array(out.data.buffer);
-  const { order, lineStarts, lineCount, maxLength } = getLines(w, h, angle);
+  const { order, lineStarts, lineCount, maxLength, cos, sin, alongFirst, alongCount } =
+    getLines(w, h, angle);
   const descending = sortOrder === "desc";
+  const wide = stripe > 1;
 
   // Arbeidsbuffere for én linje om gangen
   const linePx = new Uint32Array(maxLength);
@@ -219,38 +234,94 @@ function sortPixels(src, options) {
   const tmpPx = new Uint32Array(maxLength);
   const slots = new Uint32Array(256);
 
-  for (let line = 0; line < lineCount; line++) {
-    const from = lineStarts[line];
-    const lineLength = lineStarts[line + 1] - from;
+  // Arbeidsbuffere for ett bånd: summer og gjennomsnitt per posisjon langs vinkelen
+  const sumR = wide ? new Uint32Array(alongCount) : null;
+  const sumG = wide ? new Uint32Array(alongCount) : null;
+  const sumB = wide ? new Uint32Array(alongCount) : null;
+  const count = wide ? new Uint32Array(alongCount) : null;
+  const seenInBand = wide ? new Int32Array(alongCount).fill(-1) : null;
+  const avgValue = wide ? new Uint8Array(alongCount) : null;
 
-    // 1) Hent linjen, og regn ut lysstyrke og sorteringsverdi for hver piksel
-    for (let k = 0; k < lineLength; k++) {
-      const p = order[from + k];
-      const i = p * 4;
-      const r = bytes[i], g = bytes[i + 1], b = bytes[i + 2];
-      const lum = ((r * 299 + g * 587 + b * 114 + 500) / 1000) | 0;
-      let value = lum;
-      if (key === "hue") value = hueOf(r, g, b);
-      else if (key === "saturation") value = saturationOf(r, g, b);
-      brightness[k] = lum;
-      keys[k] = descending ? 255 - value : value;
-      linePx[k] = srcPx[p];
-    }
+  const valueOf = (r, g, b, lum) =>
+    key === "hue" ? hueOf(r, g, b) : key === "saturation" ? saturationOf(r, g, b) : lum;
+  const lumOf = (r, g, b) => ((r * 299 + g * 587 + b * 114 + 500) / 1000) | 0;
+  // Posisjon langs vinkelen for piksel nummer p
+  const alongOf = (p) => {
+    const x = p % w;
+    return Math.round(x * cos + ((p - x) / w) * sin) - alongFirst;
+  };
 
-    // 2) Finn segmentene og sorter hvert av dem
-    let k = 0;
-    while (k < lineLength) {
-      if (brightness[k] < lower || brightness[k] > upper) {
-        k++; // utenfor grensene: blir stående
-        continue;
+  for (let band = 0; band * stripe < lineCount; band++) {
+    const firstLine = band * stripe;
+    const endLine = Math.min(firstLine + stripe, lineCount);
+
+    if (wide) {
+      // a) Summer fargene for hver posisjon langs båndet
+      for (let n = lineStarts[firstLine]; n < lineStarts[endLine]; n++) {
+        const p = order[n];
+        const q = alongOf(p);
+        if (seenInBand[q] !== band) {
+          seenInBand[q] = band;
+          sumR[q] = sumG[q] = sumB[q] = count[q] = 0;
+        }
+        const i = p * 4;
+        sumR[q] += bytes[i];
+        sumG[q] += bytes[i + 1];
+        sumB[q] += bytes[i + 2];
+        count[q]++;
       }
-      const start = k;
-      while (k < lineLength && brightness[k] >= lower && brightness[k] <= upper) k++;
-      sortSegment(start, k);
+      // b) Gjør summene om til gjennomsnittsfarge, og regn ut sorteringsverdien av den
+      for (let n = lineStarts[firstLine]; n < lineStarts[endLine]; n++) {
+        const q = alongOf(order[n]);
+        const c = count[q];
+        if (c === 0) continue; // allerede regnet ut
+        const r = Math.round(sumR[q] / c), g = Math.round(sumG[q] / c), b = Math.round(sumB[q] / c);
+        avgValue[q] = valueOf(r, g, b, lumOf(r, g, b));
+        count[q] = 0;
+      }
     }
 
-    // 3) Legg linjen tilbake i bildet
-    for (let k = 0; k < lineLength; k++) outPx[order[from + k]] = linePx[k];
+    for (let line = firstLine; line < endLine; line++) {
+      const from = lineStarts[line];
+      const lineLength = lineStarts[line + 1] - from;
+
+      // 1) Hent linjen, med lysstyrke og sorteringsverdi for hver piksel
+      //    (pikselens egen, eller båndets gjennomsnitt når stripene er bredere enn 1)
+      for (let k = 0; k < lineLength; k++) {
+        const p = order[from + k];
+        let lum, value;
+        if (wide) {
+          // Grensene: pikselens egen lysstyrke, så skarpe kanter (f.eks. et mørkt fjell) blir stående.
+          // Rekkefølgen: båndets gjennomsnitt, så linjene i båndet sorteres likt.
+          const i = p * 4;
+          lum = lumOf(bytes[i], bytes[i + 1], bytes[i + 2]);
+          value = avgValue[alongOf(p)];
+        } else {
+          const i = p * 4;
+          const r = bytes[i], g = bytes[i + 1], b = bytes[i + 2];
+          lum = lumOf(r, g, b);
+          value = valueOf(r, g, b, lum);
+        }
+        brightness[k] = lum;
+        keys[k] = descending ? 255 - value : value;
+        linePx[k] = srcPx[p];
+      }
+
+      // 2) Finn segmentene og sorter hvert av dem
+      let k = 0;
+      while (k < lineLength) {
+        if (brightness[k] < lower || brightness[k] > upper) {
+          k++; // utenfor grensene: blir stående
+          continue;
+        }
+        const start = k;
+        while (k < lineLength && brightness[k] >= lower && brightness[k] <= upper) k++;
+        sortSegment(start, k);
+      }
+
+      // 3) Legg linjen tilbake i bildet
+      for (let k = 0; k < lineLength; k++) outPx[order[from + k]] = linePx[k];
+    }
   }
   return out;
 
@@ -328,6 +399,7 @@ function currentOptions() {
     angle,
     key: checkedValue("key"),
     order: checkedValue("order"),
+    stripe: Number(stripeInput.value),
   };
 }
 
@@ -336,7 +408,10 @@ function showSorted() {
   const o = currentOptions();
   ctx.putImageData(sortPixels(original, o), 0, 0);
   isSorted = true;
-  updateInfo(`Sortert: ${o.angle}°, ${LABELS[o.key]}, ${LABELS[o.order]}, lysstyrke ${o.lower}–${o.upper}`);
+  const stripeText = o.stripe > 1 ? `, striper ${o.stripe} px` : "";
+  updateInfo(
+    `Sortert: ${o.angle}°, ${LABELS[o.key]}, ${LABELS[o.order]}${stripeText}, lysstyrke ${o.lower}–${o.upper}`
+  );
 }
 
 sortBtn.addEventListener("click", showSorted);
@@ -439,6 +514,17 @@ angleNumber.addEventListener("input", () => {
 // Når man forlater feltet eller trykker Enter, vises tallet ryddig (f.eks. 400 → 40)
 angleNumber.addEventListener("change", () => {
   angleNumber.value = angle;
+});
+
+// ---------- Stripebredde ----------
+const stripeInput = document.getElementById("stripe");
+const stripeValue = document.getElementById("stripe-value");
+
+stripeInput.addEventListener("input", () => {
+  const width = Number(stripeInput.value);
+  stripeValue.textContent = `${width} px`;
+  stripeInput.setAttribute("aria-valuetext", width === 1 ? "1 piksel" : `${width} piksler`);
+  resortIfShowing();
 });
 
 // ---------- Terskler (gliderne) ----------
