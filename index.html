@@ -24,13 +24,51 @@
         <section class="panel-section panel-options" aria-labelledby="options-title">
           <h2 class="panel-title" id="options-title">Sortering</h2>
           <div class="options">
-            <fieldset class="choice choice-direction">
-              <legend>Retning</legend>
-              <div class="segmented">
-                <label><input type="radio" name="direction" value="rows" checked /><span>Rader</span></label>
-                <label><input type="radio" name="direction" value="columns" /><span>Kolonner</span></label>
+            <!-- Vinkel: et hjul (dra, eller bruk piltastene) og et tallfelt for nøyaktige verdier.
+                 0° = mot høyre (som rader), 90° = nedover (som kolonner), med klokka rundt. -->
+            <div class="choice choice-direction" role="group" aria-labelledby="angle-label">
+              <span class="choice-label" id="angle-label">Vinkel</span>
+              <div class="angle">
+                <div
+                  class="dial"
+                  id="dial"
+                  role="slider"
+                  tabindex="0"
+                  aria-labelledby="angle-label"
+                  aria-valuemin="0"
+                  aria-valuemax="359"
+                  aria-valuenow="0"
+                  aria-valuetext="0 grader, mot høyre"
+                >
+                  <svg viewBox="0 0 100 100" aria-hidden="true">
+                    <circle class="dial-face" cx="50" cy="50" r="44" />
+                    <g class="dial-ticks">
+                      <line x1="86" y1="50" x2="92" y2="50" />
+                      <line x1="50" y1="86" x2="50" y2="92" />
+                      <line x1="14" y1="50" x2="8" y2="50" />
+                      <line x1="50" y1="14" x2="50" y2="8" />
+                      <line class="minor" x1="77.6" y1="77.6" x2="79.7" y2="79.7" />
+                      <line class="minor" x1="22.4" y1="77.6" x2="20.3" y2="79.7" />
+                      <line class="minor" x1="22.4" y1="22.4" x2="20.3" y2="20.3" />
+                      <line class="minor" x1="77.6" y1="22.4" x2="79.7" y2="20.3" />
+                    </g>
+                    <g id="dial-hand" transform="rotate(0 50 50)">
+                      <line class="dial-hand" x1="50" y1="50" x2="74" y2="50" />
+                      <path class="dial-arrow" d="M72 42 L86 50 L72 58 Z" />
+                    </g>
+                    <circle class="dial-hub" cx="50" cy="50" r="5" />
+                  </svg>
+                </div>
+                <div class="angle-entry">
+                  <div class="angle-number">
+                    <label for="angle-number" class="sr-only">Vinkel i grader</label>
+                    <input type="number" id="angle-number" step="1" value="0" inputmode="numeric" />
+                    <span aria-hidden="true">°</span>
+                  </div>
+                  <span class="angle-word" id="angle-word" aria-hidden="true">mot høyre</span>
+                </div>
               </div>
-            </fieldset>
+            </div>
             <fieldset class="choice choice-key">
               <legend>Sorter etter</legend>
               <div class="segmented">

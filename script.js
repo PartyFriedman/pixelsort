@@ -144,42 +144,88 @@ function loadFile(file) {
   img.src = url;
 }
 
+// ---------- Linjer i en vinkel ----------
+// Bildet deles i parallelle linjer i valgt vinkel, som skravering med linjal.
+// 0° = mot høyre (rader), 90° = nedover (kolonner), 180° = mot venstre, 270° = oppover.
+// Hver piksel havner i nøyaktig én linje, så ingen piksler forsvinner eller dobles.
+// Svaret er en liste over alle piksler, linje for linje, i rekkefølge langs vinkelen.
+let linesCache = null;
+
+function getLines(w, h, angle) {
+  if (linesCache && linesCache.w === w && linesCache.h === h && linesCache.angle === angle) {
+    return linesCache;
+  }
+  const rad = (angle * Math.PI) / 180;
+  let cos = Math.cos(rad);
+  let sin = Math.sin(rad);
+  if (Math.abs(cos) < 1e-9) cos = 0; // så 90° og 270° blir helt rette
+  if (Math.abs(sin) < 1e-9) sin = 0;
+
+  // Hvilken linje en piksel tilhører: avstanden på tvers av vinkelen, avrundet
+  const across = (x, y) => Math.round(y * cos - x * sin);
+  const corners = [across(0, 0), across(w - 1, 0), across(0, h - 1), across(w - 1, h - 1)];
+  const first = Math.min(...corners);
+  const lineCount = Math.max(...corners) - first + 1;
+
+  // Tell hvor mange piksler hver linje har, og regn ut hvor hver linje begynner i lista
+  const lineStarts = new Uint32Array(lineCount + 1);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) lineStarts[across(x, y) - first + 1]++;
+  }
+  let maxLength = 0;
+  for (let l = 0; l < lineCount; l++) {
+    maxLength = Math.max(maxLength, lineStarts[l + 1]);
+    lineStarts[l + 1] += lineStarts[l];
+  }
+
+  // Legg pikslene inn i lista. Går vi gjennom bildet fra den siden vinkelen peker bort fra,
+  // kommer pikslene i hver linje automatisk i riktig rekkefølge.
+  const order = new Uint32Array(w * h);
+  const next = lineStarts.slice(0, lineCount);
+  const yFrom = sin >= 0 ? 0 : h - 1;
+  const yStep = sin >= 0 ? 1 : -1;
+  const xFrom = cos >= 0 ? 0 : w - 1;
+  const xStep = cos >= 0 ? 1 : -1;
+  for (let j = 0, y = yFrom; j < h; j++, y += yStep) {
+    for (let i = 0, x = xFrom; i < w; i++, x += xStep) {
+      order[next[across(x, y) - first]++] = y * w + x;
+    }
+  }
+
+  linesCache = { w, h, angle, order, lineStarts, lineCount, maxLength };
+  return linesCache;
+}
+
 // ---------- Sortering ----------
-// Bildet behandles som «linjer»: rader (venstre → høyre) eller kolonner (topp → bunn).
 // I hver linje er det bare piksler med lysstyrke mellom nedre og øvre grense som blir sortert.
 // Hver sammenhengende gruppe («segment») av slike piksler sorteres for seg, etter
 // lysstyrke, nyanse eller metning. Piksler utenfor grensene blir stående der de er.
 //
-// options = { lower, upper, direction: "rows"|"columns", key: "brightness"|"hue"|"saturation", order: "asc"|"desc" }
+// options = { lower, upper, angle: 0–359, key: "brightness"|"hue"|"saturation", order: "asc"|"desc" }
 function sortPixels(src, options) {
-  const { lower, upper, direction, key, order } = options;
+  const { lower, upper, angle, key, order: sortOrder } = options;
   const { width: w, height: h } = src;
   const out = new ImageData(new Uint8ClampedArray(src.data), w, h); // starter som en kopi
   const bytes = src.data;
   const srcPx = new Uint32Array(bytes.buffer); // én verdi per piksel (R, G, B og A samlet)
   const outPx = new Uint32Array(out.data.buffer);
-
-  // Hvordan vi går gjennom bildet: antall linjer, lengden på hver, og avstanden mellom pikslene
-  const byColumns = direction === "columns";
-  const lineCount = byColumns ? w : h;
-  const lineLength = byColumns ? h : w;
-  const lineStart = byColumns ? 1 : w; // flytt til neste linje
-  const step = byColumns ? w : 1; // flytt til neste piksel i linjen
-  const descending = order === "desc";
+  const { order, lineStarts, lineCount, maxLength } = getLines(w, h, angle);
+  const descending = sortOrder === "desc";
 
   // Arbeidsbuffere for én linje om gangen
-  const linePx = new Uint32Array(lineLength);
-  const brightness = new Uint8Array(lineLength); // brukes til grensene
-  const keys = new Uint8Array(lineLength); // det vi sorterer etter, 0–255
-  const tmpPx = new Uint32Array(lineLength);
+  const linePx = new Uint32Array(maxLength);
+  const brightness = new Uint8Array(maxLength); // brukes til grensene
+  const keys = new Uint8Array(maxLength); // det vi sorterer etter, 0–255
+  const tmpPx = new Uint32Array(maxLength);
   const slots = new Uint32Array(256);
 
   for (let line = 0; line < lineCount; line++) {
-    const base = line * lineStart;
+    const from = lineStarts[line];
+    const lineLength = lineStarts[line + 1] - from;
 
     // 1) Hent linjen, og regn ut lysstyrke og sorteringsverdi for hver piksel
     for (let k = 0; k < lineLength; k++) {
-      const p = base + k * step;
+      const p = order[from + k];
       const i = p * 4;
       const r = bytes[i], g = bytes[i + 1], b = bytes[i + 2];
       const lum = ((r * 299 + g * 587 + b * 114 + 500) / 1000) | 0;
@@ -204,7 +250,7 @@ function sortPixels(src, options) {
     }
 
     // 3) Legg linjen tilbake i bildet
-    for (let k = 0; k < lineLength; k++) outPx[base + k * step] = linePx[k];
+    for (let k = 0; k < lineLength; k++) outPx[order[from + k]] = linePx[k];
   }
   return out;
 
@@ -267,7 +313,6 @@ function saturationOf(r, g, b) {
 
 // ---------- Valgene i panelet ----------
 const LABELS = {
-  rows: "rader", columns: "kolonner",
   brightness: "lysstyrke", hue: "nyanse", saturation: "metning",
   asc: "stigende", desc: "synkende",
 };
@@ -280,7 +325,7 @@ function currentOptions() {
   return {
     lower: Number(lowerInput.value),
     upper: Number(upperInput.value),
-    direction: checkedValue("direction"),
+    angle,
     key: checkedValue("key"),
     order: checkedValue("order"),
   };
@@ -291,7 +336,7 @@ function showSorted() {
   const o = currentOptions();
   ctx.putImageData(sortPixels(original, o), 0, 0);
   isSorted = true;
-  updateInfo(`Sortert: ${LABELS[o.direction]}, ${LABELS[o.key]}, ${LABELS[o.order]}, lysstyrke ${o.lower}–${o.upper}`);
+  updateInfo(`Sortert: ${o.angle}°, ${LABELS[o.key]}, ${LABELS[o.order]}, lysstyrke ${o.lower}–${o.upper}`);
 }
 
 sortBtn.addEventListener("click", showSorted);
@@ -304,7 +349,7 @@ resetBtn.addEventListener("click", () => {
 });
 
 // Vises det sorterte bildet, oppdateres det straks et valg endres
-// (maks én gang per skjermbilde, så det henger med når man drar i en glider)
+// (maks én gang per skjermbilde, så det henger med når man drar i en glider eller hjulet)
 let pendingSort = 0;
 
 function resortIfShowing() {
@@ -318,6 +363,82 @@ function resortIfShowing() {
 
 document.querySelectorAll('.segmented input[type="radio"]').forEach((input) => {
   input.addEventListener("change", resortIfShowing);
+});
+
+// ---------- Vinkel: hjulet og tallfeltet ----------
+// Hjulet er en «slider» for skjermlesere: piltastene flytter 1°, Shift+pil og Page Up/Down 15°,
+// Home går til 0°, End til 359°. Tallet kan også skrives inn. Alt går rundt: 360° blir 0°, −1° blir 359°.
+const dial = document.getElementById("dial");
+const dialHand = document.getElementById("dial-hand");
+const angleNumber = document.getElementById("angle-number");
+const angleWord = document.getElementById("angle-word");
+const DIRECTIONS = [
+  "mot høyre", "ned mot høyre", "nedover", "ned mot venstre",
+  "mot venstre", "opp mot venstre", "oppover", "opp mot høyre",
+];
+let angle = 0;
+
+function wrapAngle(value) {
+  return ((Math.round(value) % 360) + 360) % 360;
+}
+
+function setAngle(value, { fromInput = false } = {}) {
+  const next = wrapAngle(value);
+  const word = DIRECTIONS[Math.round(next / 45) % 8];
+  dialHand.setAttribute("transform", `rotate(${next} 50 50)`);
+  dial.setAttribute("aria-valuenow", next);
+  dial.setAttribute("aria-valuetext", `${next} grader, ${word}`);
+  angleWord.textContent = word;
+  if (!fromInput) angleNumber.value = next; // ikke overskriv mens man skriver
+  if (next !== angle) {
+    angle = next;
+    resortIfShowing();
+  }
+}
+
+dial.addEventListener("keydown", (event) => {
+  const amount = event.shiftKey ? 15 : 1;
+  const moves = {
+    ArrowRight: amount, ArrowUp: amount, ArrowLeft: -amount, ArrowDown: -amount,
+    PageUp: 15, PageDown: -15,
+  };
+  if (event.key in moves) setAngle(angle + moves[event.key]);
+  else if (event.key === "Home") setAngle(0);
+  else if (event.key === "End") setAngle(359);
+  else return;
+  event.preventDefault();
+});
+
+// Dra i hjulet: vinkelen følger pekeren rundt midten. Nær 0°, 45°, 90° … «klikker» den seg fast.
+function angleFromPointer(event) {
+  const box = dial.getBoundingClientRect();
+  const dx = event.clientX - (box.left + box.width / 2);
+  const dy = event.clientY - (box.top + box.height / 2);
+  const raw = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const snapped = Math.round(raw / 45) * 45;
+  return Math.abs(raw - snapped) <= 4 ? snapped : raw;
+}
+
+dial.addEventListener("pointerdown", (event) => {
+  dial.setPointerCapture(event.pointerId);
+  dial.focus();
+  setAngle(angleFromPointer(event));
+  event.preventDefault();
+});
+
+dial.addEventListener("pointermove", (event) => {
+  if (dial.hasPointerCapture(event.pointerId)) setAngle(angleFromPointer(event));
+});
+
+angleNumber.addEventListener("input", () => {
+  if (angleNumber.value.trim() === "") return; // tomt felt: vent til noe er skrevet
+  const value = Number(angleNumber.value);
+  if (Number.isFinite(value)) setAngle(value, { fromInput: true });
+});
+
+// Når man forlater feltet eller trykker Enter, vises tallet ryddig (f.eks. 400 → 40)
+angleNumber.addEventListener("change", () => {
+  angleNumber.value = angle;
 });
 
 // ---------- Terskler (gliderne) ----------
