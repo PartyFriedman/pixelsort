@@ -80,7 +80,7 @@
         transition: border-color 150ms ease, background 150ms ease;
       }
 
-      .btn:hover {
+      .btn:hover:not(:disabled) {
         border-color: var(--accent);
       }
 
@@ -91,8 +91,20 @@
         font-weight: 600;
       }
 
-      .btn-primary:hover {
+      .btn-primary:hover:not(:disabled) {
         background: #a5c7e6;
+      }
+
+      /* Deaktiverte knapper: tydelig dempet, og ingen hover-effekt */
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       /* ---------- Hovedområdet ---------- */
@@ -209,7 +221,11 @@
     <header>
       <h1>Pixelsort</h1>
       <p class="info" id="info" aria-live="polite"></p>
-      <button type="button" class="btn" id="pick-top" hidden>Velg nytt bilde</button>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="sort" disabled>Sorter</button>
+        <button type="button" class="btn" id="reset" disabled>Tilbakestill</button>
+        <button type="button" class="btn" id="pick-top" hidden>Velg nytt bilde</button>
+      </div>
     </header>
 
     <main>
@@ -254,6 +270,17 @@
       const errorBox = document.getElementById("error");
       const info = document.getElementById("info");
       const pickTop = document.getElementById("pick-top");
+      const sortBtn = document.getElementById("sort");
+      const resetBtn = document.getElementById("reset");
+
+      // Originalbildet lagres her som en egen kopi av pikslene.
+      // Den blir aldri endret – sorteringen jobber alltid på en ny kopi.
+      let original = null;
+      let fileName = "";
+
+      function updateInfo(state) {
+        info.textContent = `${fileName} · ${canvas.width} × ${canvas.height} px · ${state}`;
+      }
 
       // ---------- Åpne filvelgeren ----------
       function openPicker() {
@@ -336,6 +363,17 @@
           ctx.drawImage(img, 0, 0);
           URL.revokeObjectURL(url);
 
+          try {
+            original = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          } catch (err) {
+            original = null;
+            sortBtn.disabled = true;
+            resetBtn.disabled = true;
+            showError(`Klarte ikke å lese pikslene i «${file.name}». Bildet kan være for stort.`);
+            return;
+          }
+          fileName = file.name;
+
           hideError();
           empty.hidden = true;
           canvas.hidden = false;
@@ -344,8 +382,10 @@
           drop.removeAttribute("role");
           drop.setAttribute("aria-label", "Bilde: " + file.name);
           pickTop.hidden = false;
-          info.textContent = `${file.name} · ${img.naturalWidth} × ${img.naturalHeight} px`;
-          pickTop.focus();
+          sortBtn.disabled = false;
+          resetBtn.disabled = false;
+          updateInfo("Original");
+          sortBtn.focus(); // neste naturlige steg
         };
 
         img.onerror = () => {
@@ -355,6 +395,57 @@
 
         img.src = url;
       }
+
+      // ---------- Sortering ----------
+      // Lysstyrke 0–255, vektet slik øyet oppfatter farger (grønt virker lysest, blått mørkest)
+      function sortRowsByBrightness(src) {
+        const { width: w, height: h } = src;
+        const out = new ImageData(w, h);
+        const bytes = src.data;
+        const srcPx = new Uint32Array(bytes.buffer); // én verdi per piksel (R, G, B og A samlet)
+        const outPx = new Uint32Array(out.data.buffer);
+        const brightness = new Uint8Array(w);
+        const slots = new Uint32Array(256);
+
+        for (let y = 0; y < h; y++) {
+          const row = y * w;
+          slots.fill(0);
+
+          // 1) Mål lysstyrken på hver piksel i raden, og tell hvor mange det er av hver
+          for (let x = 0; x < w; x++) {
+            const i = (row + x) * 4;
+            const b = ((bytes[i] * 299 + bytes[i + 1] * 587 + bytes[i + 2] * 114 + 500) / 1000) | 0;
+            brightness[x] = b;
+            slots[b]++;
+          }
+
+          // 2) Regn ut hvor hver lysstyrke-gruppe skal begynne i raden
+          let pos = 0;
+          for (let b = 0; b < 256; b++) {
+            const count = slots[b];
+            slots[b] = pos;
+            pos += count;
+          }
+
+          // 3) Plasser pikslene, mørkeste først. Like lyse beholder rekkefølgen sin.
+          for (let x = 0; x < w; x++) {
+            outPx[row + slots[brightness[x]]++] = srcPx[row + x];
+          }
+        }
+        return out;
+      }
+
+      sortBtn.addEventListener("click", () => {
+        if (!original) return;
+        ctx.putImageData(sortRowsByBrightness(original), 0, 0);
+        updateInfo("Sortert");
+      });
+
+      resetBtn.addEventListener("click", () => {
+        if (!original) return;
+        ctx.putImageData(original, 0, 0);
+        updateInfo("Original");
+      });
 
       // ---------- Feilmeldinger ----------
       function showError(message) {
