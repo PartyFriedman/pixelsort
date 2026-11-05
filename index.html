@@ -15,14 +15,45 @@
     <div class="layout">
       <!-- Kontrollpanelet: til venstre på PC, nederst på mobil -->
       <aside class="panel" aria-label="Kontrollpanel">
-        <section class="panel-section panel-image" aria-labelledby="image-title">
-          <h2 class="panel-title" id="image-title">Bilde</h2>
+        <section class="panel-section panel-image" aria-label="Bilde">
           <button type="button" class="btn" id="pick-top">Velg bilde</button>
         </section>
 
-        <!-- Terskler: bare piksler med lysstyrke mellom grensene blir sortert -->
-        <section class="panel-section" aria-labelledby="controls-title">
-          <h2 class="panel-title" id="controls-title">Lysstyrke som sorteres</h2>
+        <!-- Valg for sorteringen: radioknapper som ser ut som segmenterte knapper.
+             Tab går til gruppen, piltastene bytter valg. -->
+        <section class="panel-section panel-options" aria-labelledby="options-title">
+          <h2 class="panel-title" id="options-title">Sortering</h2>
+          <div class="options">
+            <fieldset class="choice choice-direction">
+              <legend>Retning</legend>
+              <div class="segmented">
+                <label><input type="radio" name="direction" value="rows" checked /><span>Rader</span></label>
+                <label><input type="radio" name="direction" value="columns" /><span>Kolonner</span></label>
+              </div>
+            </fieldset>
+            <fieldset class="choice choice-key">
+              <legend>Sorter etter</legend>
+              <div class="segmented">
+                <label><input type="radio" name="key" value="brightness" checked /><span>Lysstyrke</span></label>
+                <label><input type="radio" name="key" value="hue" /><span>Nyanse</span></label>
+                <label><input type="radio" name="key" value="saturation" /><span>Metning</span></label>
+              </div>
+            </fieldset>
+            <fieldset class="choice choice-order">
+              <legend>Rekkefølge</legend>
+              <div class="segmented">
+                <label><input type="radio" name="order" value="asc" checked /><span>Stigende</span></label>
+                <label><input type="radio" name="order" value="desc" /><span>Synkende</span></label>
+              </div>
+            </fieldset>
+          </div>
+        </section>
+
+        <!-- Terskler: bare piksler med lysstyrke mellom grensene blir sortert,
+             uansett hva det sorteres etter -->
+        <section class="panel-section panel-thresholds" aria-labelledby="controls-title" aria-describedby="controls-hint">
+          <h2 class="panel-title" id="controls-title">Utvalg etter lysstyrke</h2>
+          <p class="panel-hint" id="controls-hint">Bare piksler med lysstyrke mellom grensene blir sortert.</p>
           <div class="controls">
             <div class="field">
               <div class="field-head">
