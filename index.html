@@ -266,6 +266,8 @@
       });
 
       drop.addEventListener("keydown", (event) => {
+        // Når et bilde vises, er slippsonen ikke lenger en knapp
+        if (drop.classList.contains("has-image")) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           openPicker();
