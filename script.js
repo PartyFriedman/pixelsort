@@ -120,6 +120,7 @@ function loadFile(file) {
       return;
     }
     fileName = file.name;
+    pixelValues(original, "brightness"); // regnes ut én gang nå, så første sortering går raskt
 
     hideError();
     empty.hidden = true;
@@ -202,6 +203,35 @@ function getLines(w, h, angle) {
   return linesCache;
 }
 
+// ---------- Verdier per piksel ----------
+// Lysstyrke, nyanse og metning endrer seg ikke så lenge bildet er det samme. De regnes derfor ut
+// én gang per bilde og huskes, i stedet for på nytt ved hver sortering. Lysstyrke regnes ut når
+// bildet lastes; nyanse og metning første gang de brukes. Mellomlageret hører til selve
+// bildedataene, så et nytt bilde får automatisk nye verdier.
+const valueCache = new WeakMap();
+
+function lumOf(r, g, b) {
+  return ((r * 299 + g * 587 + b * 114 + 500) / 1000) | 0;
+}
+
+function pixelValues(src, key) {
+  let entry = valueCache.get(src);
+  if (!entry) {
+    entry = {};
+    valueCache.set(src, entry);
+  }
+  if (!entry[key]) {
+    const measure = key === "hue" ? hueOf : key === "saturation" ? saturationOf : lumOf;
+    const bytes = src.data;
+    const values = new Uint8Array(src.width * src.height);
+    for (let p = 0, i = 0; p < values.length; p++, i += 4) {
+      values[p] = measure(bytes[i], bytes[i + 1], bytes[i + 2]);
+    }
+    entry[key] = values;
+  }
+  return entry[key];
+}
+
 // ---------- Sortering ----------
 // I hver linje er det bare piksler med lysstyrke mellom nedre og øvre grense som blir sortert.
 // Hver sammenhengende gruppe («segment») av slike piksler sorteres for seg, etter
@@ -227,6 +257,10 @@ function sortPixels(src, options) {
   const descending = sortOrder === "desc";
   const wide = stripe > 1;
 
+  // Ferdig utregnede verdier for hver piksel (se «Verdier per piksel»)
+  const lumAt = pixelValues(src, "brightness");
+  const valueAt = key === "brightness" ? lumAt : pixelValues(src, key);
+
   // Arbeidsbuffere for én linje om gangen
   const linePx = new Uint32Array(maxLength);
   const brightness = new Uint8Array(maxLength); // brukes til grensene
@@ -242,9 +276,9 @@ function sortPixels(src, options) {
   const seenInBand = wide ? new Int32Array(alongCount).fill(-1) : null;
   const avgValue = wide ? new Uint8Array(alongCount) : null;
 
+  // Sorteringsverdien for en gjennomsnittsfarge (stripebredde > 1)
   const valueOf = (r, g, b, lum) =>
     key === "hue" ? hueOf(r, g, b) : key === "saturation" ? saturationOf(r, g, b) : lum;
-  const lumOf = (r, g, b) => ((r * 299 + g * 587 + b * 114 + 500) / 1000) | 0;
   // Posisjon langs vinkelen for piksel nummer p
   const alongOf = (p) => {
     const x = p % w;
@@ -289,20 +323,10 @@ function sortPixels(src, options) {
       //    (pikselens egen, eller båndets gjennomsnitt når stripene er bredere enn 1)
       for (let k = 0; k < lineLength; k++) {
         const p = order[from + k];
-        let lum, value;
-        if (wide) {
-          // Grensene: pikselens egen lysstyrke, så skarpe kanter (f.eks. et mørkt fjell) blir stående.
-          // Rekkefølgen: båndets gjennomsnitt, så linjene i båndet sorteres likt.
-          const i = p * 4;
-          lum = lumOf(bytes[i], bytes[i + 1], bytes[i + 2]);
-          value = avgValue[alongOf(p)];
-        } else {
-          const i = p * 4;
-          const r = bytes[i], g = bytes[i + 1], b = bytes[i + 2];
-          lum = lumOf(r, g, b);
-          value = valueOf(r, g, b, lum);
-        }
-        brightness[k] = lum;
+        // Grensene bruker alltid pikselens egen lysstyrke, så skarpe kanter (f.eks. et mørkt fjell)
+        // blir stående. Rekkefølgen: pikselens egen verdi, eller båndets gjennomsnitt.
+        const value = wide ? avgValue[alongOf(p)] : valueAt[p];
+        brightness[k] = lumAt[p];
         keys[k] = descending ? 255 - value : value;
         linePx[k] = srcPx[p];
       }
