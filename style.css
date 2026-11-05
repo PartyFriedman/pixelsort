@@ -1,0 +1,212 @@
+/* Pixelsort – all styling for siden */
+
+:root {
+  color-scheme: dark;
+  --bg: #121417;
+  --surface: #1a1d22;
+  --line: #2c3139;
+  --line-strong: #4a525e;
+  --text: #e4e7eb;
+  --muted: #9aa3ae;
+  --accent: #8fb8de;
+  --error: #f08c8c;
+  --error-bg: #2a1a1c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ---------- Topp ---------- */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.info {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #a5c7e6;
+}
+
+/* Deaktiverte knapper: tydelig dempet, og ingen hover-effekt */
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Hovedområdet ---------- */
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.error {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* Slippsonen fyller resten av vinduet */
+.drop {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.drop:hover {
+  border-color: var(--line-strong);
+}
+
+.drop.dragging {
+  border-color: var(--accent);
+  background: #1d232b;
+}
+
+/* Når et bilde vises, blir rammen roligere */
+.drop.has-image {
+  border-style: solid;
+  border-color: var(--line);
+  background: var(--bg);
+  cursor: default;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty svg {
+  width: 48px;
+  height: 48px;
+  color: var(--line-strong);
+}
+
+.empty strong {
+  display: block;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.hint {
+  font-size: 0.85rem;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+/* Canvas har full oppløsning, men skaleres ned med CSS */
+canvas {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 140px); /* plass til toppen og marger */
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
