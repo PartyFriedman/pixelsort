@@ -10,60 +10,76 @@
     <header>
       <h1>Pixelsort</h1>
       <p class="info" id="info" aria-live="polite"></p>
-      <div class="actions">
-        <button type="button" class="btn btn-primary" id="sort" disabled>Sorter</button>
-        <button type="button" class="btn" id="reset" disabled>Tilbakestill</button>
-        <button type="button" class="btn" id="pick-top" hidden>Velg nytt bilde</button>
-      </div>
     </header>
 
-    <main>
-      <!-- Terskler: bare piksler med lysstyrke mellom grensene blir sortert -->
-      <div class="controls" role="group" aria-labelledby="controls-title">
-        <p class="controls-title" id="controls-title">Lysstyrke som sorteres</p>
-        <div class="field">
-          <label for="lower">Nedre grense</label>
-          <input type="range" id="lower" min="0" max="255" step="1" value="0" />
-          <output id="lower-value" for="lower">0</output>
-        </div>
-        <div class="field">
-          <label for="upper">Øvre grense</label>
-          <input type="range" id="upper" min="0" max="255" step="1" value="255" />
-          <output id="upper-value" for="upper">255</output>
-        </div>
-      </div>
+    <div class="layout">
+      <!-- Kontrollpanelet: til venstre på PC, nederst på mobil -->
+      <aside class="panel" aria-label="Kontrollpanel">
+        <section class="panel-section panel-image" aria-labelledby="image-title">
+          <h2 class="panel-title" id="image-title">Bilde</h2>
+          <button type="button" class="btn" id="pick-top">Velg bilde</button>
+        </section>
 
-      <p class="error" id="error" role="alert" hidden></p>
+        <!-- Terskler: bare piksler med lysstyrke mellom grensene blir sortert -->
+        <section class="panel-section" aria-labelledby="controls-title">
+          <h2 class="panel-title" id="controls-title">Lysstyrke som sorteres</h2>
+          <div class="controls">
+            <div class="field">
+              <div class="field-head">
+                <label for="lower">Nedre grense</label>
+                <output id="lower-value" for="lower">0</output>
+              </div>
+              <input type="range" id="lower" min="0" max="255" step="1" value="0" />
+            </div>
+            <div class="field">
+              <div class="field-head">
+                <label for="upper">Øvre grense</label>
+                <output id="upper-value" for="upper">255</output>
+              </div>
+              <input type="range" id="upper" min="0" max="255" step="1" value="255" />
+            </div>
+          </div>
+        </section>
 
-      <!-- Slippsonen: kan klikkes, eller aktiveres med Enter/mellomrom -->
-      <div
-        class="drop"
-        id="drop"
-        tabindex="0"
-        role="button"
-        aria-label="Velg et bilde, eller dra og slipp et bilde her"
-      >
-        <div class="empty" id="empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="9" cy="9" r="2" />
-            <path d="m21 15-5-5L5 21" />
-          </svg>
-          <p>
-            <strong>Ingen bilde valgt ennå</strong>
-            Dra og slipp et bilde hit, eller velg et fra maskinen din.
-          </p>
-          <span class="btn btn-primary" aria-hidden="true">Velg bilde</span>
-          <p class="hint">
-            Du kan også trykke <kbd>Enter</kbd> her, eller lime inn med <kbd>Ctrl</kbd>+<kbd>V</kbd>.
-          </p>
+        <section class="panel-section panel-actions" aria-label="Handlinger">
+          <button type="button" class="btn btn-primary" id="sort" disabled>Sorter</button>
+          <button type="button" class="btn" id="reset" disabled>Tilbakestill</button>
+        </section>
+      </aside>
+
+      <main>
+        <p class="error" id="error" role="alert" hidden></p>
+
+        <!-- Slippsonen: kan klikkes, eller aktiveres med Enter/mellomrom -->
+        <div
+          class="drop"
+          id="drop"
+          tabindex="0"
+          role="button"
+          aria-label="Velg et bilde, eller dra og slipp et bilde her"
+        >
+          <div class="empty" id="empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-5-5L5 21" />
+            </svg>
+            <p>
+              <strong>Ingen bilde valgt ennå</strong>
+              Dra og slipp et bilde hit, eller velg et fra maskinen din.
+            </p>
+            <span class="btn btn-primary" aria-hidden="true">Velg bilde</span>
+            <p class="hint">
+              Du kan også trykke <kbd>Enter</kbd> her, eller lime inn med <kbd>Ctrl</kbd>+<kbd>V</kbd>.
+            </p>
+          </div>
+          <canvas id="canvas" hidden></canvas>
         </div>
-        <canvas id="canvas" hidden></canvas>
-      </div>
 
-      <input type="file" id="file" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true" />
-    </main>
+        <input type="file" id="file" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true" />
+      </main>
+    </div>
 
     <script src="script.js"></script>
   </body>

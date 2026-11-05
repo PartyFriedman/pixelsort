@@ -128,7 +128,7 @@ function loadFile(file) {
     drop.setAttribute("tabindex", "-1");
     drop.removeAttribute("role");
     drop.setAttribute("aria-label", "Bilde: " + file.name);
-    pickTop.hidden = false;
+    pickTop.textContent = "Velg nytt bilde";
     sortBtn.disabled = false;
     resetBtn.disabled = false;
     isSorted = false;

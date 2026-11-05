@@ -96,16 +96,52 @@ h1 {
   cursor: not-allowed;
 }
 
-.actions {
+/* ---------- Oppsett: panel til venstre, bildet til høyre ---------- */
+.layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+/* ---------- Kontrollpanelet ---------- */
+.panel {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 28px;
+  padding: 20px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel .btn {
+  width: 100%;
+}
+
+.panel-actions {
   gap: 8px;
 }
 
 /* ---------- Hovedområdet ---------- */
 main {
-  flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -195,41 +231,36 @@ kbd {
 /* ---------- Terskler (gliderne) ---------- */
 .controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 28px;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.controls-title {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
+/* Label og verdi på én linje, glideren under i full bredde */
 .field {
-  flex: 1 1 260px;
-  max-width: 420px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 12px;
 }
 
 .field label {
-  flex: none;
-  min-width: 7.5em;
   font-size: 0.9rem;
 }
 
 .field input[type="range"] {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
 
 .field output {
-  flex: none;
   min-width: 3ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -246,10 +277,93 @@ kbd {
 canvas {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 200px); /* plass til toppen, gliderne og marger */
+  max-height: calc(100vh - 110px); /* plass til toppen og marger */
   width: auto;
   height: auto;
   object-fit: contain;
+}
+
+/* ---------- Mobil: bildet øverst, panelet fast nederst ----------
+   Alt får plass på én skjerm, så bildet er synlig mens man drar i gliderne. */
+@media (max-width: 760px) {
+  html,
+  body {
+    height: 100dvh;
+  }
+
+  header {
+    padding: 10px 16px;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  main {
+    grid-row: 1;
+    padding: 12px 16px;
+  }
+
+  .drop {
+    min-height: 0;
+  }
+
+  .panel {
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px 8px;
+    padding: 14px 16px 16px;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+
+  /* Overskriftene tar for mye plass på liten skjerm; skjules visuelt, men leses fortsatt opp */
+  .panel-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Gliderne side om side øverst, så knappene i én rad under */
+  .panel-section:not(.panel-image):not(.panel-actions) {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .controls {
+    flex-direction: row;
+    gap: 16px;
+  }
+
+  .field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .panel-image {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .panel-actions {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    flex-direction: row;
+  }
+
+  .panel .btn {
+    padding: 10px 6px;
+  }
+
+  canvas {
+    max-height: calc(100dvh - 250px); /* toppen, panelet og marger */
+  }
 }
 
 .sr-only {
