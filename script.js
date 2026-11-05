@@ -104,6 +104,10 @@ function loadFile(file) {
   const img = new Image();
 
   img.onload = () => {
+    cancelPending(); // en halvferdig oppdatering av forrige bilde skal ikke tegnes oppå dette
+    canvas.style.width = ""; // i tilfelle forrige bilde var midt i en forhåndsvisning
+    canvas.style.height = "";
+    previewShowing = false;
     // Full oppløsning: canvas får bildets egne mål i piksler
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
@@ -121,6 +125,7 @@ function loadFile(file) {
     }
     fileName = file.name;
     pixelValues(original, "brightness"); // regnes ut én gang nå, så første sortering går raskt
+    makePreview(img);
 
     hideError();
     empty.hidden = true;
@@ -150,12 +155,12 @@ function loadFile(file) {
 // 0° = mot høyre (rader), 90° = nedover (kolonner), 180° = mot venstre, 270° = oppover.
 // Hver piksel havner i nøyaktig én linje, så ingen piksler forsvinner eller dobles.
 // Svaret er en liste over alle piksler, linje for linje, i rekkefølge langs vinkelen.
-let linesCache = null;
+// Mellomlager: siste vinkel for hver bildestørrelse (fullt bilde og forhåndsvisning hver for seg)
+const linesCache = new Map();
 
 function getLines(w, h, angle) {
-  if (linesCache && linesCache.w === w && linesCache.h === h && linesCache.angle === angle) {
-    return linesCache;
-  }
+  const cached = linesCache.get(`${w}x${h}`);
+  if (cached && cached.angle === angle) return cached;
   const rad = (angle * Math.PI) / 180;
   let cos = Math.cos(rad);
   let sin = Math.sin(rad);
@@ -199,8 +204,9 @@ function getLines(w, h, angle) {
   const alongFirst = Math.min(...along);
   const alongCount = Math.max(...along) - alongFirst + 1;
 
-  linesCache = { w, h, angle, order, lineStarts, lineCount, maxLength, cos, sin, alongFirst, alongCount };
-  return linesCache;
+  const lines = { w, h, angle, order, lineStarts, lineCount, maxLength, cos, sin, alongFirst, alongCount };
+  linesCache.set(`${w}x${h}`, lines);
+  return lines;
 }
 
 // ---------- Verdier per piksel ----------
@@ -430,7 +436,9 @@ function currentOptions() {
 function showSorted() {
   if (!original) return;
   const o = currentOptions();
-  ctx.putImageData(sortPixels(original, o), 0, 0);
+  const sorted = sortPixels(original, o);
+  leavePreview();
+  ctx.putImageData(sorted, 0, 0);
   isSorted = true;
   const stripeText = o.stripe > 1 ? `, striper ${o.stripe} px` : "";
   updateInfo(
@@ -438,30 +446,120 @@ function showSorted() {
   );
 }
 
-sortBtn.addEventListener("click", showSorted);
+sortBtn.addEventListener("click", () => {
+  cancelPending();
+  showSorted();
+});
 
 resetBtn.addEventListener("click", () => {
   if (!original) return;
+  cancelPending();
+  leavePreview();
   ctx.putImageData(original, 0, 0);
   isSorted = false;
   updateInfo("Original");
 });
 
-// Vises det sorterte bildet, oppdateres det straks et valg endres
-// (maks én gang per skjermbilde, så det henger med når man drar i en glider eller hjulet)
-let pendingSort = 0;
+// ---------- Forhåndsvisning mens man justerer ----------
+// Store bilder er for tunge å sortere mange ganger i sekundet. Mens man drar i en glider eller
+// hjulet (eller holder inne en piltast), sorteres derfor en nedskalert kopi. Canvaset får da
+// kopiens lille størrelse, men låses til samme størrelse på skjermen, så nettleseren forstørrer
+// det selv (nesten gratis). Når man slipper – eller etter en kort pause uten endringer – sorteres
+// hele bildet i full kvalitet. Sluttresultatet er alltid det samme som før.
+const PREVIEW_MAX_SIDE = 1000; // lengste side på forhåndsvisningen, i piksler
+const FULL_RENDER_DELAY = 200; // ms uten endringer før hele bildet sorteres
 
-function resortIfShowing() {
-  if (isSorted && !pendingSort) {
-    pendingSort = requestAnimationFrame(() => {
-      pendingSort = 0;
-      showSorted();
+let preview = null; // { data, scale } – eller null når bildet er lite nok
+let previewShowing = false; // har canvaset forhåndsvisningens størrelse akkurat nå?
+let pendingFrame = 0;
+let fullTimer = 0;
+
+function makePreview(img) {
+  const scale = PREVIEW_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight);
+  if (scale >= 1) {
+    preview = null; // bildet er allerede lite: alltid full kvalitet
+    return;
+  }
+  const small = document.createElement("canvas");
+  small.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  small.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const smallCtx = small.getContext("2d", { willReadFrequently: true });
+  smallCtx.imageSmoothingQuality = "high";
+  smallCtx.drawImage(img, 0, 0, small.width, small.height);
+  preview = { data: smallCtx.getImageData(0, 0, small.width, small.height), scale };
+}
+
+function showPreview() {
+  const o = currentOptions();
+  // Stripebredden skaleres ned sammen med bildet, så stripene ser like brede ut
+  const stripe = Math.max(1, Math.round(o.stripe * preview.scale));
+  const sorted = sortPixels(preview.data, { ...o, stripe });
+  if (!previewShowing) {
+    // Lås størrelsen på skjermen, og gi canvaset forhåndsvisningens oppløsning
+    const box = canvas.getBoundingClientRect();
+    canvas.style.width = `${box.width}px`;
+    canvas.style.height = `${box.height}px`;
+    canvas.width = sorted.width;
+    canvas.height = sorted.height;
+    previewShowing = true;
+  }
+  ctx.putImageData(sorted, 0, 0);
+}
+
+// Tilbake til full oppløsning (før hele bildet eller originalen tegnes)
+function leavePreview() {
+  if (!previewShowing) return;
+  canvas.width = original.width;
+  canvas.height = original.height;
+  canvas.style.width = "";
+  canvas.style.height = "";
+  previewShowing = false;
+}
+
+function cancelPending() {
+  cancelAnimationFrame(pendingFrame);
+  pendingFrame = 0;
+  clearTimeout(fullTimer);
+  fullTimer = 0;
+}
+
+// Sorter hele bildet nå (brukes når man slipper, og etter pausen)
+function renderFull() {
+  cancelPending();
+  if (isSorted) showSorted();
+}
+
+// Et valg er endret i ett steg (f.eks. Nyanse → Metning): sorter hele bildet ved neste skjermbilde
+function updateNow() {
+  if (!isSorted) return;
+  cancelPending();
+  pendingFrame = requestAnimationFrame(renderFull);
+}
+
+// Noe justeres fortløpende: vis forhåndsvisningen nå, og hele bildet når det har roet seg
+function adjust() {
+  if (!isSorted) return;
+  if (!preview) {
+    if (!pendingFrame) pendingFrame = requestAnimationFrame(renderFull);
+    return;
+  }
+  if (!pendingFrame) {
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = 0;
+      if (isSorted) showPreview();
     });
   }
+  clearTimeout(fullTimer);
+  fullTimer = setTimeout(renderFull, FULL_RENDER_DELAY);
+}
+
+// Man har sluppet glideren eller hjulet: vent ikke på pausen
+function finishAdjusting() {
+  if (isSorted && preview) renderFull();
 }
 
 document.querySelectorAll('.segmented input[type="radio"]').forEach((input) => {
-  input.addEventListener("change", resortIfShowing);
+  input.addEventListener("change", updateNow);
 });
 
 // ---------- Vinkel: hjulet og tallfeltet ----------
@@ -491,7 +589,7 @@ function setAngle(value, { fromInput = false } = {}) {
   if (!fromInput) angleNumber.value = next; // ikke overskriv mens man skriver
   if (next !== angle) {
     angle = next;
-    resortIfShowing();
+    adjust();
   }
 }
 
@@ -529,6 +627,9 @@ dial.addEventListener("pointermove", (event) => {
   if (dial.hasPointerCapture(event.pointerId)) setAngle(angleFromPointer(event));
 });
 
+// Sluppet (eller avbrutt): sorter hele bildet med én gang
+dial.addEventListener("lostpointercapture", finishAdjusting);
+
 angleNumber.addEventListener("input", () => {
   if (angleNumber.value.trim() === "") return; // tomt felt: vent til noe er skrevet
   const value = Number(angleNumber.value);
@@ -538,6 +639,7 @@ angleNumber.addEventListener("input", () => {
 // Når man forlater feltet eller trykker Enter, vises tallet ryddig (f.eks. 400 → 40)
 angleNumber.addEventListener("change", () => {
   angleNumber.value = angle;
+  finishAdjusting();
 });
 
 // ---------- Stripebredde ----------
@@ -548,8 +650,9 @@ stripeInput.addEventListener("input", () => {
   const width = Number(stripeInput.value);
   stripeValue.textContent = `${width} px`;
   stripeInput.setAttribute("aria-valuetext", width === 1 ? "1 piksel" : `${width} piksler`);
-  resortIfShowing();
+  adjust();
 });
+stripeInput.addEventListener("pointerup", finishAdjusting);
 
 // ---------- Terskler (gliderne) ----------
 // Nedre grense kan aldri gå forbi øvre, og omvendt: gliderne stopper når de møtes.
@@ -565,11 +668,15 @@ function onThresholdInput(event) {
   }
   lowerValue.textContent = lower;
   upperValue.textContent = upper;
-  resortIfShowing();
+  adjust();
 }
 
 lowerInput.addEventListener("input", onThresholdInput);
 upperInput.addEventListener("input", onThresholdInput);
+// Sluppet med mus eller finger: sorter hele bildet med én gang
+// (med tastaturet skjer det etter den korte pausen)
+lowerInput.addEventListener("pointerup", finishAdjusting);
+upperInput.addEventListener("pointerup", finishAdjusting);
 
 // ---------- Feilmeldinger ----------
 function showError(message) {
