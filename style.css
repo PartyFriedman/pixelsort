@@ -192,6 +192,12 @@ kbd {
   font-size: 0.8rem;
 }
 
+/* Elementer med hidden-attributtet skal alltid være skjult,
+   selv om en annen regel gir dem display: block eller flex */
+[hidden] {
+  display: none !important;
+}
+
 /* Canvas har full oppløsning, men skaleres ned med CSS */
 canvas {
   display: block;
