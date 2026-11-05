@@ -246,11 +246,12 @@ function pixelValues(src, key) {
 // Hver sammenhengende gruppe («segment») av slike piksler sorteres for seg, etter
 // lysstyrke, nyanse eller metning. Piksler utenfor grensene blir stående der de er.
 //
-// Stripebredde: så mange nabolinjer danner ett «bånd». For hver posisjon langs båndet regnes
-// gjennomsnittsfargen av pikslene på tvers, og sorteringen bruker dette gjennomsnittet, så alle
-// linjene i båndet sorteres likt og stripen holder seg samlet. Pikslene beholder sin egen farge –
-// gjennomsnittet bestemmer bare hvor de havner. Grensene bruker fortsatt hver piksels egen
-// lysstyrke; ellers ville mørke kantpiksler blitt dratt med inn i lyse områder som prikker.
+// Stripebredde: så mange nabolinjer danner ett «bånd». For hver posisjon langs båndet blandes
+// pikslene på tvers til én gjennomsnittsfarge, og så sorteres de blandede pikslene. Da blir hver
+// stripe et ensfarget felt som er så bredt som valgt. Bare piksler innenfor grensene blandes (og
+// bare med hverandre): piksler utenfor – f.eks. et mørkt fjell – beholder både farge og plass,
+// så skarpe kanter blir stående i stedet for å bli trappete. Grensene bruker hver piksels egen
+// lysstyrke. Med stripebredde 1 blandes ingenting, og alt er som før.
 //
 // options = { lower, upper, angle: 0–359, key: "brightness"|"hue"|"saturation",
 //             order: "asc"|"desc", stripe: 1–50 }
@@ -284,6 +285,8 @@ function sortPixels(src, options) {
   const count = wide ? new Uint32Array(alongCount) : null;
   const seenInBand = wide ? new Int32Array(alongCount).fill(-1) : null;
   const avgValue = wide ? new Uint8Array(alongCount) : null;
+  const avgColor = wide ? new Uint32Array(alongCount) : null; // blandet farge (R, G, B samlet)
+  const inRange = (p) => lumAt[p] >= lower && lumAt[p] <= upper;
 
   // Sorteringsverdien for en gjennomsnittsfarge (stripebredde > 1)
   const valueOf = (r, g, b, lum) =>
@@ -299,9 +302,10 @@ function sortPixels(src, options) {
     const endLine = Math.min(firstLine + stripe, lineCount);
 
     if (wide) {
-      // a) Summer fargene for hver posisjon langs båndet
+      // a) Summer fargene for hver posisjon langs båndet (bare piksler innenfor grensene)
       for (let n = lineStarts[firstLine]; n < lineStarts[endLine]; n++) {
         const p = order[n];
+        if (!inRange(p)) continue;
         const q = alongOf(p);
         if (seenInBand[q] !== band) {
           seenInBand[q] = band;
@@ -315,11 +319,14 @@ function sortPixels(src, options) {
       }
       // b) Gjør summene om til gjennomsnittsfarge, og regn ut sorteringsverdien av den
       for (let n = lineStarts[firstLine]; n < lineStarts[endLine]; n++) {
-        const q = alongOf(order[n]);
+        const p = order[n];
+        if (!inRange(p)) continue;
+        const q = alongOf(p);
         const c = count[q];
         if (c === 0) continue; // allerede regnet ut
         const r = Math.round(sumR[q] / c), g = Math.round(sumG[q] / c), b = Math.round(sumB[q] / c);
         avgValue[q] = valueOf(r, g, b, lumOf(r, g, b));
+        avgColor[q] = r | (g << 8) | (b << 16); // samme rekkefølge som i bildedataene
         count[q] = 0;
       }
     }
@@ -328,16 +335,22 @@ function sortPixels(src, options) {
       const from = lineStarts[line];
       const lineLength = lineStarts[line + 1] - from;
 
-      // 1) Hent linjen, med lysstyrke og sorteringsverdi for hver piksel
-      //    (pikselens egen, eller båndets gjennomsnitt når stripene er bredere enn 1)
+      // 1) Hent linjen, med lysstyrke og sorteringsverdi for hver piksel. Når stripene er
+      //    bredere enn 1, får piksler innenfor grensene båndets blandede farge og verdi.
       for (let k = 0; k < lineLength; k++) {
         const p = order[from + k];
-        // Grensene bruker alltid pikselens egen lysstyrke, så skarpe kanter (f.eks. et mørkt fjell)
-        // blir stående. Rekkefølgen: pikselens egen verdi, eller båndets gjennomsnitt.
-        const value = wide ? avgValue[alongOf(p)] : valueAt[p];
-        brightness[k] = lumAt[p];
-        keys[k] = descending ? 255 - value : value;
-        linePx[k] = srcPx[p];
+        brightness[k] = lumAt[p]; // grensene: alltid pikselens egen lysstyrke
+        if (wide && inRange(p)) {
+          const q = alongOf(p);
+          const value = avgValue[q];
+          keys[k] = descending ? 255 - value : value;
+          // >>> 0 holder tallet positivt (gjennomsiktigheten beholdes fra pikselen selv)
+          linePx[k] = ((srcPx[p] & 0xff000000) | avgColor[q]) >>> 0;
+        } else {
+          const value = valueAt[p];
+          keys[k] = descending ? 255 - value : value;
+          linePx[k] = srcPx[p];
+        }
       }
 
       // 2) Finn segmentene og sorter hvert av dem
