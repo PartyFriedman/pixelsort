@@ -13,6 +13,7 @@ const pickTop = document.getElementById("pick-top");
 const sortBtn = document.getElementById("sort");
 const resetBtn = document.getElementById("reset");
 const downloadBtn = document.getElementById("download");
+const peekBtn = document.getElementById("peek");
 const lowerInput = document.getElementById("lower");
 const upperInput = document.getElementById("upper");
 const lowerValue = document.getElementById("lower-value");
@@ -24,6 +25,7 @@ const upperValue = document.getElementById("upper-value");
 let original = null;
 let fileName = "";
 let isSorted = false; // vises det sorterte bildet akkurat nå?
+let shown = null; // pikslene som sist ble tegnet på canvaset (original, sortert eller forhåndsvisning)
 
 // ---------- Statuslinjen øverst ----------
 function updateInfo(state) {
@@ -109,6 +111,8 @@ function loadFile(file) {
     canvas.style.width = ""; // i tilfelle forrige bilde var midt i en forhåndsvisning
     canvas.style.height = "";
     previewShowing = false;
+    peeking = false; // et nytt bilde avbryter «Vis original»
+    peekBtn.setAttribute("aria-pressed", "false");
     // Full oppløsning: canvas får bildets egne mål i piksler
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
@@ -122,6 +126,7 @@ function loadFile(file) {
       sortBtn.disabled = true;
       resetBtn.disabled = true;
       downloadBtn.disabled = true;
+      peekBtn.disabled = true;
       showError(`Klarte ikke å lese pikslene i «${file.name}». Bildet kan være for stort.`);
       return;
     }
@@ -139,6 +144,8 @@ function loadFile(file) {
     pickTop.textContent = "Velg nytt bilde";
     sortBtn.disabled = false;
     resetBtn.disabled = false;
+    peekBtn.disabled = false;
+    shown = original;
     isSorted = false;
     downloadBtn.disabled = true; // ingenting sortert å laste ned ennå
     updateInfo("Original");
@@ -455,6 +462,7 @@ function showSorted() {
   const sorted = sortPixels(original, o);
   leavePreview();
   ctx.putImageData(sorted, 0, 0);
+  shown = sorted;
   isSorted = true;
   downloadBtn.disabled = false;
   const stripeText = o.stripe > 1 ? `, striper ${o.stripe} px` : "";
@@ -473,6 +481,7 @@ resetBtn.addEventListener("click", () => {
   cancelPending();
   leavePreview();
   ctx.putImageData(original, 0, 0);
+  shown = original;
   isSorted = false;
   downloadBtn.disabled = true;
   updateInfo("Original");
@@ -518,6 +527,60 @@ downloadBtn.addEventListener("click", () => {
   }, "image/png");
 });
 
+// ---------- Vis original (hold inne) ----------
+// Mens knappen holdes inne (mus, berøring, eller mellomrom/Enter), vises originalen. Når den
+// slippes, tegnes de samme pikslene som ble vist før (`shown`) – uten å sortere på nytt.
+// Bare hvis en oppdatering ventet (eller noe ble endret underveis), sorteres det etterpå.
+let peeking = false;
+let peekStale = false; // må bildet sorteres på nytt når knappen slippes?
+let peekRestore = null; // { previewShowing, width, height } fra før knappen ble trykket
+
+function startPeek() {
+  if (peeking || !original || peekBtn.disabled) return;
+  peeking = true;
+  peekStale = Boolean(pendingFrame || fullTimer);
+  cancelPending();
+  peekRestore = { previewShowing, width: canvas.style.width, height: canvas.style.height };
+  leavePreview();
+  ctx.putImageData(original, 0, 0);
+  peekBtn.setAttribute("aria-pressed", "true");
+}
+
+function endPeek() {
+  if (!peeking) return;
+  peeking = false;
+  peekBtn.setAttribute("aria-pressed", "false");
+  if (peekRestore.previewShowing) {
+    canvas.style.width = peekRestore.width;
+    canvas.style.height = peekRestore.height;
+    canvas.width = shown.width;
+    canvas.height = shown.height;
+    previewShowing = true;
+  }
+  ctx.putImageData(shown, 0, 0);
+  if (peekStale && isSorted) renderFull();
+  peekStale = false;
+}
+
+peekBtn.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  peekBtn.setPointerCapture(event.pointerId);
+  startPeek();
+});
+peekBtn.addEventListener("pointerup", endPeek);
+peekBtn.addEventListener("pointercancel", endPeek);
+peekBtn.addEventListener("lostpointercapture", endPeek);
+peekBtn.addEventListener("keydown", (event) => {
+  if (event.key !== " " && event.key !== "Enter") return;
+  event.preventDefault(); // ingen rulling eller klikk
+  if (!event.repeat) startPeek();
+});
+peekBtn.addEventListener("keyup", (event) => {
+  if (event.key === " " || event.key === "Enter") endPeek();
+});
+peekBtn.addEventListener("blur", endPeek);
+peekBtn.addEventListener("contextmenu", (event) => event.preventDefault()); // lang-trykk på mobil
+
 // ---------- Forhåndsvisning mens man justerer ----------
 // Store bilder er for tunge å sortere mange ganger i sekundet. Mens man drar i en glider eller
 // hjulet (eller holder inne en piltast), sorteres derfor en nedskalert kopi. Canvaset får da
@@ -562,6 +625,7 @@ function showPreview() {
     previewShowing = true;
   }
   ctx.putImageData(sorted, 0, 0);
+  shown = sorted;
 }
 
 // Tilbake til full oppløsning (før hele bildet eller originalen tegnes)
@@ -590,6 +654,7 @@ function renderFull() {
 // Et valg er endret i ett steg (f.eks. Nyanse → Metning): sorter hele bildet ved neste skjermbilde
 function updateNow() {
   if (!isSorted) return;
+  if (peeking) return void (peekStale = true); // tegnes når «Vis original» slippes
   cancelPending();
   pendingFrame = requestAnimationFrame(renderFull);
 }
@@ -597,6 +662,7 @@ function updateNow() {
 // Noe justeres fortløpende: vis forhåndsvisningen nå, og hele bildet når det har roet seg
 function adjust() {
   if (!isSorted) return;
+  if (peeking) return void (peekStale = true); // tegnes når «Vis original» slippes
   if (!preview) {
     if (!pendingFrame) pendingFrame = requestAnimationFrame(renderFull);
     return;
